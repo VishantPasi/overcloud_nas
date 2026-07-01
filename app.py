@@ -2,6 +2,8 @@ from fastapi import Body, FastAPI, HTTPException, UploadFile, File, Form
 import aiofiles
 from pathlib import Path
 
+from fastapi.responses import FileResponse
+
 from config import UPLOAD_FOLDER
 from storage import create_user_folder
 
@@ -14,29 +16,6 @@ app = FastAPI(
 async def home():
     return {"message": "Hybrid NAS Server Running"}
 
-
-@app.post("/upload")
-async def upload_file(
-    uid: str = Form(...),
-    file: UploadFile = File(...)
-): 
-     # Create the user's folder
-    user_folder = create_user_folder(uid)
-
-    # Destination path
-    file_path = user_folder / file.filename
-
-    # Save file in 1 MB chunks
-    async with aiofiles.open(file_path, "wb") as buffer:
-
-        while chunk := await file.read(1024 * 1024):
-            await buffer.write(chunk)
-
-    return {
-        "success": True,
-        "filename": file.filename,
-        "uid": uid
-    }
 
 @app.post("/createFolder")
 async def create_folder(data: dict = Body(...)):
@@ -61,3 +40,50 @@ async def create_folder(data: dict = Body(...)):
         "message": "Folder created successfully",
         "path": str(folder_path)
     }
+
+
+@app.post("/upload")
+async def upload_file(
+    uid: str = Form(...),
+    folderId: str = Form(...),
+    file: UploadFile = File(...)
+): 
+     # Create the user's folder
+    user_folder = create_user_folder(uid)
+
+    # Destination path
+    file_path = user_folder / folderId / file.filename
+
+    # Save file in 1 MB chunks
+    async with aiofiles.open(file_path, "wb") as buffer:
+
+        while chunk := await file.read(1024 * 1024):
+            await buffer.write(chunk)
+
+    return {
+        "success": True,
+        "filename": file.filename,
+        "uid": uid
+    }
+
+@app.get("/download")
+async def download_file(
+    uid: str,
+    folderId: str,
+    fileId: str,
+):
+    user_folder = create_user_folder(uid)
+
+    file_path = user_folder / folderId / fileId
+
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail="File not found"
+        )
+
+    return FileResponse(
+        path=file_path,
+        filename=fileId,
+        media_type="application/octet-stream",
+    )
